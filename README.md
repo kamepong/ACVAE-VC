@@ -76,7 +76,7 @@ python main.py [-g gpu] [-arc arch_type] [-exp exp_name] ...
 ```
 
 - Options:
-  - -gpu: GPU device# ("-1" for CPU)
+  - -g: GPU device# ("-1" for CPU)
   - -arc: Architecture type ("conv" for fully convolutional and "rnn" for recurrent architectures)
   - -exp: Experiment name (e.g., "conv_exp1")
 
