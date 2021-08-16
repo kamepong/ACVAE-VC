@@ -1,7 +1,6 @@
 #!/bin/sh
 
 # Copyright 2021 Hirokazu Kameoka
-# MIT License (https://opensource.org/licenses/MIT)
 # 
 # Usage:
 # ./run_test_ATR_5spk.sh [-g gpu] [-e exp_name]

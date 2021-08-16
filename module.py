@@ -1,3 +1,5 @@
+# Copyright 2021 Hirokazu Kameoka
+
 import torch
 import torch.nn as nn
 

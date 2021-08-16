@@ -1,7 +1,6 @@
 #!/bin/sh
 
 # Copyright 2021 Hirokazu Kameoka
-# MIT License (https://opensource.org/licenses/MIT)
 # 
 # Usage:
 # ./run_train_arctic_4spk.sh [-g gpu] [-a arch_type] [-s stage] [-e exp_name]
