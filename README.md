@@ -100,7 +100,7 @@ python convert.py [-g gpu] [-exp exp_name] [-ckpt checkpoint] ...
 - Options:
   - -g: GPU device# (CPU will be used if not specified)
   - -exp: Experiment name (e.g., "conv_exp1")
-  - -ckpt: Model checkpoint (The latest model will be selected if not specified)
+  - -ckpt: Model checkpoint (The newest model will be selected if not specified)
 
   
 
