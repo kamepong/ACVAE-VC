@@ -76,7 +76,7 @@ python main.py [-g gpu] [-arc arch_type] [-exp exp_name] ...
 ```
 
 - Options:
-  - -g: GPU device# ("-1" for CPU)
+  - -g: GPU device# (CPU will be used if not specified)
   - -arc: Architecture type ("conv" for fully convolutional and "rnn" for recurrent architectures)
   - -exp: Experiment name (e.g., "conv_exp1")
 
@@ -94,10 +94,15 @@ tensorboard [--logdir log_path]
 To perform conversion, execute:
 
 ```bash
-python convert.py [-g gpu] [-exp exp_name] ...
+python convert.py [-g gpu] [-exp exp_name] [-ckpt checkpoint] ...
 ```
 
+- Options:
+  - -g: GPU device# (CPU will be used if not specified)
+  - -exp: Experiment name (e.g., "conv_exp1")
+  - -ckpt: Model checkpoint (The latest model will be selected if not specified)
 
+  
 
 ## Citation
 

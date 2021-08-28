@@ -3,19 +3,22 @@
 # Copyright 2021 Hirokazu Kameoka
 # 
 # Usage:
-# ./run_test_whisper.sh [-g gpu] [-e exp_name]
+# ./run_test_whisper.sh [-g gpu] [-e exp_name] [-c checkpoint]
 # Options:
 #     -g: GPU device#  
 #     -e: Experiment name (e.g., "conv_exp1")
+#     -c: Model checkpoint to load (0 indicates the newest model)
 
 db_dir="/misc/raid58/kameoka.hirokazu/db/ATR503Seki/test"
 dataset_name="whisper"
 gpu=0
+checkpoint=0
 
-while getopts "g:e:" opt; do
+while getopts "g:e:c:" opt; do
        case $opt in
               g ) gpu=$OPTARG;;
               e ) exp_name=$OPTARG;;
+			  c ) checkpoint=$OPTARG;;
        esac
 done
 
@@ -32,4 +35,5 @@ python convert.py -g ${gpu} \
 	--out ${out_dir} \
 	--model_rootdir ${model_dir} \
 	--experiment_name ${exp_name} \
-	--voc_dir ${vocoder_dir}
+	--voc_dir ${vocoder_dir} \
+	--checkpoint ${checkpoint}

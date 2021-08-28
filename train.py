@@ -23,7 +23,7 @@ def comb(N):
     iterable = list(range(0,N))
     return list(itertools.combinations(iterable,2))
 
-def Train(models, epochs, train_loader, optimizers, device, model_dir, log_path, snapshot=100, resume=0):
+def Train(model, epochs, train_loader, optimizer, device, model_dir, log_path, snapshot=100, resume=0):
     fmt = '%(asctime)s (%(module)s:%(lineno)d) %(levelname)s: %(message)s'
     datafmt = '%m/%d/%Y %I:%M:%S'
     if not os.path.exists(os.path.dirname(log_path)):
@@ -35,13 +35,13 @@ def Train(models, epochs, train_loader, optimizers, device, model_dir, log_path,
     if not os.path.exists(model_dir):
         os.makedirs(model_dir)
 
-    for tag in ['enc', 'dec', 'cls']:
-        checkpointpath = os.path.join(model_dir, '{}.{}.pt'.format(resume,tag))
-        if os.path.exists(checkpointpath):
-            checkpoint = torch.load(checkpointpath, map_location=device)
-            models[tag].load_state_dict(checkpoint['model_state_dict'])
-            optimizers[tag].load_state_dict(checkpoint['optimizer_state_dict'])
-            print('{} loaded successfully.'.format(checkpointpath))
+    tag = 'acvae'
+    checkpointpath = os.path.join(model_dir, '{}.{}.pt'.format(resume,tag))
+    if os.path.exists(checkpointpath):
+        checkpoint = torch.load(checkpointpath, map_location=device)
+        model.load_state_dict(checkpoint['model_state_dict'])
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        print('{} loaded successfully.'.format(checkpointpath))
 
     n_iter = 0
     print("===================================Start Training===================================")
@@ -66,7 +66,7 @@ def Train(models, epochs, train_loader, optimizers, device, model_dir, log_path,
             for m in range(n_spk_pair):
                 s0 = spk_pair_list[m][0]
                 s1 = spk_pair_list[m][1]
-                VAELoss_prior, VAELoss_like, ClsLoss_r, ClsLoss_f = models['acvae'].calc_loss(xin[s0], xin[s1], s0, s1, n_spk)
+                VAELoss_prior, VAELoss_like, ClsLoss_r, ClsLoss_f = model.calc_loss(xin[s0], xin[s1], s0, s1, n_spk)
                 vae_loss = (VAELoss_prior + VAELoss_like + ClsLoss_f)
                 cls_loss = 0.0*ClsLoss_f + ClsLoss_r
 
@@ -75,11 +75,9 @@ def Train(models, epochs, train_loader, optimizers, device, model_dir, log_path,
                 cls_loss_f_mean += ClsLoss_f.item()
                 cls_loss_r_mean += ClsLoss_r.item()
 
-                for tag in ['enc', 'dec', 'cls']:
-                    models[tag].zero_grad()
+                model.zero_grad()
                 (vae_loss+cls_loss).backward()
-                for tag in ['enc', 'dec', 'cls']:
-                    optimizers[tag].step()
+                optimizer.step()
 
             like_loss_mean /= n_spk_pair
             prior_loss_mean /= n_spk_pair
@@ -99,12 +97,12 @@ def Train(models, epochs, train_loader, optimizers, device, model_dir, log_path,
             b += 1
 
         if epoch % snapshot == 0:
-            for tag in ['enc', 'dec', 'cls']:
-                #print('save {} at {} epoch'.format(tag, epoch))
-                torch.save({'epoch': epoch,
-                            'model_state_dict': models[tag].state_dict(),
-                            'optimizer_state_dict': optimizers[tag].state_dict()},
-                            os.path.join(model_dir, '{}.{}.pt'.format(epoch, tag)))
+            tag = 'acvae'
+            #print('save {} at {} epoch'.format(tag, epoch))
+            torch.save({'epoch': epoch,
+                        'model_state_dict': model.state_dict(),
+                        'optimizer_state_dict': optimizer.state_dict()},
+                        os.path.join(model_dir, '{}.{}.pt'.format(epoch, tag)))
 
     print("===================================Training Finished===================================")
 
@@ -179,21 +177,18 @@ def main():
     with open(config_path, 'w') as outfile:
         json.dump(model_config, outfile, indent=4)
 
-    models = {
-        'enc' : net.Encoder1(num_mels, n_spk, zdim, hdim) if arch_type=='conv' else net.Encoder2(num_mels, n_spk, zdim, hdim),
-        'dec' : net.Decoder1(zdim, n_spk, num_mels, hdim) if arch_type=='conv' else net.Decoder2(zdim, n_spk, num_mels, hdim),
-        'cls' : net.Classifier1(num_mels, n_spk, mdim)
-    }
-    models['acvae'] = net.ACVAE(models['enc'], models['dec'], models['cls'])
+    enc = net.Encoder1(num_mels, n_spk, zdim, hdim) if arch_type=='conv' else net.Encoder2(num_mels, n_spk, zdim, hdim)
+    dec = net.Decoder1(zdim, n_spk, num_mels, hdim) if arch_type=='conv' else net.Decoder2(zdim, n_spk, num_mels, hdim)
+    cls = net.Classifier1(num_mels, n_spk, mdim)
+    model = net.ACVAE(enc, dec, cls)
+    model.to(device).train(mode=True)
 
-    optimizers = {
-        'enc' : optim.Adam(models['enc'].parameters(), lr=lrate_vae, betas=(0.9,0.999)),
-        'dec' : optim.Adam(models['dec'].parameters(), lr=lrate_vae, betas=(0.9,0.999)),
-        'cls' : optim.Adam(models['cls'].parameters(), lr=lrate_cls, betas=(0.5,0.999))
-    }
-
-    for tag in ['enc', 'dec', 'cls']:
-        models[tag].to(device).train(mode=True)
+    params = [
+        {"params": model.enc.parameters()},
+        {"params": model.dec.parameters()},
+        {"params": model.cls.parameters(), "lr": lrate_cls, "betas": (0.5, 0.999)},
+    ]
+    optimizer = optim.Adam(params, lr=lrate_vae, betas=(0.9, 0.999))
 
     train_dataset = MultiDomain_Dataset(*melspec_dirs)
     train_loader = DataLoader(train_dataset,
@@ -201,8 +196,9 @@ def main():
                               shuffle=True,
                               #num_workers=0,
                               num_workers=os.cpu_count(),
+                              drop_last=True,
                               collate_fn=collate_fn)
-    Train(models, epochs, train_loader, optimizers, device, model_dir, log_path, snapshot, resume)
+    Train(model, epochs, train_loader, optimizer, device, model_dir, log_path, snapshot, resume)
 
 
 if __name__ == '__main__':

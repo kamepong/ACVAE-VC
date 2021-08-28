@@ -97,6 +97,7 @@ def main():
     parser.add_argument('--dataconf', type=str, default='./dump/arctic/data_config.json')
     parser.add_argument('--stat', type=str, default='./dump/arctic/stat.pkl', help='state file used for normalization')                        
     parser.add_argument('--model_rootdir', '-mdir', type=str, default='./model/arctic/', help='model file directory')
+    parser.add_argument('--checkpoint', '-ckpt', type=int, default=0, help='model checkpoint to load (0 indicates the newest model)')
     parser.add_argument('--experiment_name', '-exp', default='experiment1', type=str, help='experiment name')
     parser.add_argument('--vocoder', '-voc', default='parallel_wavegan.v1', type=str,
                         help='neural vocoder type name (e.g., parallel_wavegan.v1, melgan.v3.long)')
@@ -119,6 +120,7 @@ def main():
         data_config = json.load(f)
     with open(model_config_path) as f:
         model_config = json.load(f)
+    checkpoint = args.checkpoint
 
     num_mels = model_config['num_mels']
     arch_type = model_config['arch_type']
@@ -138,25 +140,22 @@ def main():
         print('Stat file not found.')
 
     # Set up main model
-    models = {
-        'enc' : net.Encoder1(num_mels, n_spk, zdim, hdim) if arch_type=='conv' else net.Encoder2(num_mels, n_spk, zdim, hdim),
-        'dec' : net.Decoder1(zdim, n_spk, num_mels, hdim) if arch_type=='conv' else net.Decoder2(zdim, n_spk, num_mels, hdim),
-        'cls' : net.Classifier1(num_mels, n_spk, mdim)
-    }
-    models['acvae'] = net.ACVAE(models['enc'], models['dec'], models['cls'])
+    enc = net.Encoder1(num_mels, n_spk, zdim, hdim) if arch_type=='conv' else net.Encoder2(num_mels, n_spk, zdim, hdim)
+    dec = net.Decoder1(zdim, n_spk, num_mels, hdim) if arch_type=='conv' else net.Decoder2(zdim, n_spk, num_mels, hdim)
+    cls = net.Classifier1(num_mels, n_spk, mdim)
+    model = net.ACVAE(enc, dec, cls)
 
-    for tag in ['enc', 'dec', 'cls']:
-        model_dir = os.path.join(args.model_rootdir,args.experiment_name)
-        mfilename = find_newest_model_file(model_dir, tag)
-        path = os.path.join(args.model_rootdir,args.experiment_name,mfilename)
-        if path is not None:
-            checkpoint = torch.load(path, map_location=device)
-            models[tag].load_state_dict(checkpoint['model_state_dict'])
-            print('{}: {}'.format(tag, mfilename))
+    tag = 'acvae'
+    model_dir = os.path.join(args.model_rootdir,args.experiment_name)
+    mfilename = find_newest_model_file(model_dir, tag) if checkpoint <= 0 else '{}.{}.pt'.format(checkpoint,tag)
+    path = os.path.join(args.model_rootdir,args.experiment_name,mfilename)
+    if path is not None:
+        acvae_checkpoint = torch.load(path, map_location=device)
+        model.load_state_dict(acvae_checkpoint['model_state_dict'])
+        print('{}: {}'.format(tag, mfilename))
 
-    for tag in ['enc', 'dec', 'cls']:
-        #models[tag].to(device).eval()
-        models[tag].to(device).train(mode=True)
+    #model.to(device).eval()
+    model.to(device).train(mode=True)
 
     # Set up PWG
     vocoder = args.vocoder
@@ -182,21 +181,23 @@ def main():
     for i, src_spk in enumerate(src_spk_list):
         src_wav_dir = os.path.join(input_dir, src_spk)
         for j, trg_spk in enumerate(trg_spk_list):
-            print('Converting {}2{}...'.format(src_spk, trg_spk))
-            for n, src_wav_filename in enumerate(os.listdir(src_wav_dir)):
-                src_wav_filepath = os.path.join(src_wav_dir, src_wav_filename)
-                src_melspec = audio_transform(src_wav_filepath, melspec_scaler, data_config, device)
-                l_s = make_onehot(i,n_spk,device)
-                l_t = make_onehot(j,n_spk,device)
+            if src_spk != trg_spk:
+                print('Converting {}2{}...'.format(src_spk, trg_spk))
+                for n, src_wav_filename in enumerate(os.listdir(src_wav_dir)):
+                    src_wav_filepath = os.path.join(src_wav_dir, src_wav_filename)
+                    src_melspec = audio_transform(src_wav_filepath, melspec_scaler, data_config, device)
+                    l_s = make_onehot(i,n_spk,device)
+                    l_t = make_onehot(j,n_spk,device)
 
-                num_frames = src_melspec.shape[2]
-                conv_melspec = models['dec'](models['enc'](src_melspec, l_s)[0], l_t, num_frames)[0]
+                    num_frames = src_melspec.shape[2]
+                    conv_melspec = model(src_melspec, l_s, l_t)
+                    #conv_melspec = model.dec(model.enc(src_melspec, l_s)[0], l_t, num_frames)[0]
 
-                conv_melspec = conv_melspec[0,:,:].detach().cpu().clone().numpy()
-                conv_melspec = conv_melspec.T # n_frames x n_mels
+                    conv_melspec = conv_melspec[0,:,:].detach().cpu().clone().numpy()
+                    conv_melspec = conv_melspec.T # n_frames x n_mels
 
-                out_wavpath = os.path.join(args.out,args.experiment_name,'{}2{}'.format(src_spk,trg_spk), src_wav_filename)
-                synthesis(conv_melspec, pwg, pwg_config, out_wavpath, device)
+                    out_wavpath = os.path.join(args.out,args.experiment_name,'{}2{}'.format(src_spk,trg_spk), src_wav_filename)
+                    synthesis(conv_melspec, pwg, pwg_config, out_wavpath, device)
 
 
 if __name__ == '__main__':

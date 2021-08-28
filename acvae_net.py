@@ -91,7 +91,7 @@ class Decoder1(nn.Module):
         pad4 = md.calc_padding(9,1,False,stride=1)
         self.le4 = nn.ConvTranspose1d(mid_ch+clsnum, out_ch*2, 9, stride=1, padding=pad4)
 
-    def __call__(self, zin, y, num_frames):
+    def __call__(self, zin, y, num_frames=None):
         device = zin.device
 
         out = zin
@@ -104,7 +104,8 @@ class Decoder1(nn.Module):
         out = md.concat_dim1(out,y)
         out = self.le4(out)
         
-        out = out.clone()[:,:,0:num_frames]
+        if num_frames is not None:
+            out = out.clone()[:,:,0:num_frames]
         mu, ln_var = torch.split(out,out.shape[1]//2,dim=1)
 
         ln_var = torch.clamp(ln_var, min = -50.0, max = 0.0)
@@ -184,9 +185,9 @@ class Classifier1(nn.Module):
 
         return d, p
     
-class ACVAE():
-    # Cross entropy criterion
+class ACVAE(nn.Module):
     def __init__(self, enc, dec, cls):
+        super(ACVAE, self).__init__()
         self.enc = enc
         self.dec = dec
         self.cls = cls
@@ -207,7 +208,11 @@ class ACVAE():
         x_power = (x_diff * x_diff) * x_prec * -0.5
         like_loss = torch.mean((x_lnvar + math.log(2 * math.pi)) / 2 - x_power)
         return like_loss
-        
+
+    def __call__(self, x_s, l_s, l_t):
+        N_s, n_ch_s, n_frame_s =  x_s.shape
+        return self.dec(self.enc(x_s, l_s)[0], l_t, n_frame_s)[0]
+
     def calc_loss(self, x_s, x_t, clsind_s, clsind_t, clsnum):
         device = x_s.device
         N_s, n_ch_s, n_frame_s =  x_s.shape
@@ -297,10 +302,5 @@ class ACVAE():
                                                                       dcf_tt.shape[0]+
                                                                       dcf_ts.shape[0])
 
-        self.VAELoss_prior = vae_loss_prior
-        self.VAELoss_like = vae_loss_like
-        self.ClsLoss_f = ClsLoss_f
-        self.ClsLoss_r = ClsLoss_r
-
-        return self.VAELoss_prior, self.VAELoss_like, self.ClsLoss_r, self.ClsLoss_f
+        return vae_loss_prior, vae_loss_like, ClsLoss_r, ClsLoss_f
 

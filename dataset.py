@@ -17,7 +17,8 @@ def walk_files(root, extension):
 class MultiDomain_Dataset(Dataset):
     def __init__(self, *feat_dirs):
         self.n_domain = len(feat_dirs)
-        self.filenames_all = [[t for t in walk_files(d, '.h5')] for d in feat_dirs]
+        self.filenames_all = [[os.path.join(d,t) for t in sorted(os.listdir(d))] for d in feat_dirs]
+        #self.filenames_all = [[t for t in walk_files(d, '.h5')] for d in feat_dirs]
         self.feat_dirs = feat_dirs
         
     def __len__(self):
@@ -32,8 +33,6 @@ class MultiDomain_Dataset(Dataset):
         return melspec_list
 
 def collate_fn(batch):
-    max_of_maxlen = 1024
-    
     #batch[b][s]: melspec (n_freq x n_frame)
     #b: batch size
     #s: speaker ID
@@ -54,19 +53,11 @@ def collate_fn(batch):
             if maxlen<melspec_list[s][b].shape[1]:
                 maxlen = melspec_list[s][b].shape[1]
     
-        if maxlen > max_of_maxlen:
-            onset_range = maxlen - max_of_maxlen
-            fixlen = max_of_maxlen
-        else:
-            onset_range = 0
-            fixlen = maxlen
-
-        X = np.zeros((batchsize,n_freq,fixlen))
+        X = np.zeros((batchsize,n_freq,maxlen))
         for b in range(batchsize):
-            onset = random.randint(0,onset_range) # 0 <= onset <= onset_range
             melspec = melspec_list[s][b]
             melspec = np.tile(melspec,(1,math.ceil(maxlen/melspec.shape[1])))
-            X[b,:,:] = melspec[:,onset:onset+fixlen]        
+            X[b,:,:] = melspec[:,0:maxlen]
         #X = torch.tensor(X)
         X_list.append(X)
 

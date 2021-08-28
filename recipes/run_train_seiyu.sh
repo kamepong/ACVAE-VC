@@ -27,6 +27,13 @@ while getopts "g:a:s:e:" opt; do
        esac
 done
 
+# Model configuration for each architecture type
+if [ ${arch_type} == "conv" ]; then
+       cond="--epochs 2000 --snapshot 200"
+elif [ ${arch_type} == "rnn" ]; then
+       cond="--epochs 2000 --snapshot 200"
+fi
+
 feat_dir="./dump/${dataset_name}/feat/train"
 dconf_path="./dump/${dataset_name}/data_config.json"
 stat_path="./dump/${dataset_name}/stat.pkl"
@@ -36,7 +43,7 @@ log_dir="./logs/${dataset_name}"
 
 # Stage 0: Feature extraction
 if [[ ${start_stage} -le 0 ]]; then
-       python extract_features.py --src ${db_dir} --dst ${feat_dir} --conf ${dconf_path}
+       python extract_features.py --src ${db_dir} --dst ${feat_dir} --conf ${dconf_path} --trim_silence
        python compute_statistics.py --src ${feat_dir} --stat ${stat_path}
        python normalize_features.py --src ${feat_dir} --dst ${normfeat_dir} --stat ${stat_path}
 fi

@@ -27,6 +27,13 @@ while getopts "g:a:s:e:" opt; do
        esac
 done
 
+# Model configuration for each architecture type
+if [ ${arch_type} == "conv" ]; then
+       cond="--epochs 2000 --snapshot 200"
+elif [ ${arch_type} == "rnn" ]; then
+       cond="--epochs 2000 --snapshot 200"
+fi
+
 feat_dir="./dump/${dataset_name}/feat/train"
 dconf_path="./dump/${dataset_name}/data_config.json"
 stat_path="./dump/${dataset_name}/stat.pkl"
