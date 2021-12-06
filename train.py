@@ -13,7 +13,7 @@ from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import DataLoader
 
 from dataset import MultiDomain_Dataset, collate_fn
-import acvae_net as net
+import net
 
 def makedirs_if_not_exists(dir):
     if not os.path.exists(dir):

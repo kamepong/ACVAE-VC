@@ -1,18 +1,10 @@
 # ACVAE-VC
 
-This repository provides an official PyTorch implementation for [ACVAE-VC](http://www.kecl.ntt.co.jp/people/kameoka.hirokazu/Demos/acvae-vc2/index.html).
+This repository provides an official PyTorch implementation for [ACVAE-VC](http://www.kecl.ntt.co.jp/people/kameoka.hirokazu/Demos/acvae-vc3/index.html).
 
-ACVAE-VC is a non-parallel many-to-many voice conversion method that modifies the mel-spectrogram of input speech, and generates a waveform from the modified spectrogram using Parallel WaveGAN.
+ACVAE-VC is a non-parallel many-to-many voice conversion (VC) method using an auxiliary classifier variational autoencoder (ACVAE). The current version performs VC by first modifying the mel-spectrogram of input speech, and then generating a waveform using a speaker-independent neural vocoder (HifiGAN or Parallel WaveGAN) from the modified spectrogram.
 
-Audio samples are available [here](http://www.kecl.ntt.co.jp/people/kameoka.hirokazu/Demos/acvae-vc2/index.html).
-
-#### Prerequisites
-
-- See `requirements.txt`.
-
-- See https://github.com/kan-bayashi/ParallelWaveGAN for the packages needed to set up Parallel WaveGAN.
-
-  
+Audio samples are available [here](http://www.kecl.ntt.co.jp/people/kameoka.hirokazu/Demos/acvae-vc3/index.html).
 
 ## Paper
 
@@ -22,9 +14,13 @@ Audio samples are available [here](http://www.kecl.ntt.co.jp/people/kameoka.hiro
 
 ## Preparation
 
+#### Prerequisites
+
+- See `requirements.txt`.
+
 #### Dataset
 
-1. Setup your training dataset. The data structure should look like:
+1. Setup your training and test sets. The data structure should look like:
 
    ```bash
    /path/to/dataset/training
@@ -37,48 +33,64 @@ Audio samples are available [here](http://www.kecl.ntt.co.jp/people/kameoka.hiro
    └── spk_N
        ├── utt1.wav
        ...
+       
+   /path/to/dataset/test
+   ├── spk_1
+   │   ├── utt1.wav
+   │   ...
+   ├── spk_2
+   │   ├── utt1.wav
+   │   ...
+   └── spk_N
+       ├── utt1.wav
+       ...
    ```
 
-#### Parallel WaveGAN
+#### Waveform generator
 
-1. Setup Parallel WaveGAN.  Place a copy of the directory `parallel_wavegan` from https://github.com/kan-bayashi/ParallelWaveGAN in `pwg/`.
-2. Parallel WaveGAN models trained on several databases can be found [here](https://app.box.com/folder/127558077224). Once these are downloaded, place them in `pwg/egs/`. Please contact me if you have any problems downloading.
-
-```bash
-# Model trained on the ATR database (11 speakers)
-cp -r ATR_all_flen64ms_fshift8ms pwg/egs/
-# Model trained on the CMU ARCTIC dataset (4 speakers)
-cp -r arctic_4spk_flen64ms_fshift8ms pwg/egs/
-```
-
-
+1. Place a copy of the directory `parallel_wavegan` from https://github.com/kan-bayashi/ParallelWaveGAN in `hifigan/` (or `pwg/`).
+2. HifiGAN models trained on several databases can be found [here](https://drive.google.com/drive/folders/1RvagKsKaCih0qhRP6XkSF07r3uNFhB5T?usp=sharing). Once these are downloaded, place them in `hifigan/egs/`. Please contact me if you have any problems downloading.
+3. Optionally, Parallel WaveGAN can be used instead for waveform generation. The trained models are available [here](https://drive.google.com/drive/folders/1zRYZ9dx16dONn1SEuO4wXjjgJHaYSKwb?usp=sharing). Once these are downloaded, place them in `pwg/egs/`. 
 
 ## Main
 
-See shell scripts in `recipes` for examples of training on different datasets.
-
-#### Feature Extraction
-
-To extract the normalized mel-spectrograms from the training utterances, execute:
-
-```bash
-python extract_features.py
-python compute_statistics.py
-python normalize_features.py
-```
-
 #### Train
 
-To train the model, execute:
+To run all stages for model training, execute:
 
 ```bash
-python main.py [-g gpu] [-arc arch_type] [-exp exp_name] ...
+./recipes/run_train.sh [-g gpu] [-a arch_type] [-s stage] [-e exp_name]
 ```
 
 - Options:
-  - -g: GPU device# (CPU will be used if not specified)
-  - -arc: Architecture type ("conv" for fully convolutional and "rnn" for recurrent architectures)
-  - -exp: Experiment name (e.g., "conv_exp1")
+
+  ```bash
+  -g: GPU device (default: -1)
+  #    -1 indicates CPU
+  -a: VAE architecture type ("conv" or "rnn")
+  #    conv: 1D fully convolutional network (default)
+  #    rnn: Bidirectional long short-term memory network
+  -s: Stage to start (0 or 1)
+  #    Stages 0 and 1 correspond to feature extraction and model training, respectively.
+  -e: Experiment name (default: "conv_exp1")
+  #    This name will be used at test time to specify the trained model.
+  ```
+
+- Examples:
+
+  ```bash
+  # To run the training from scratch with the default settings:
+  ./recipes/run_train.sh
+  
+  # To skip the feature extraction stage:
+  ./recipes/run_train.sh -s 1
+  
+  # To set the gpu device to, say, 0:
+  ./recipes/run_train.sh -g 0
+  
+  # To use a VAE with a recurrent architecture:
+  ./recipes/run_train.sh -a rnn -e rnn_exp1
+  ```
 
 
 To monitor the training process, use tensorboard:
@@ -87,22 +99,36 @@ To monitor the training process, use tensorboard:
 tensorboard [--logdir log_path]
 ```
 
-
-
 #### Test
 
 To perform conversion, execute:
 
 ```bash
-python convert.py [-g gpu] [-exp exp_name] [-ckpt checkpoint] ...
+./recipes/run_test.sh [-g gpu] [-e exp_name] [-c checkpoint] [-v vocoder]
 ```
 
 - Options:
-  - -g: GPU device# (CPU will be used if not specified)
-  - -exp: Experiment name (e.g., "conv_exp1")
-  - -ckpt: Model checkpoint (The newest model will be selected if not specified)
 
+  ```bash
+  -g: GPU device (default: -1)
+  #    -1 indicates CPU
+  -e: Experiment name (e.g., "conv_exp1")
+  -c: Model checkpoint to load (default: 0)
+  #    0 indicates the newest model
+  -v: Vocoder type ("hifigan" or "pwg")
+  #    hifigan: HifiGAN (default)
+  #    pwg: Parallel WaveGAN
+  ```
+
+- Examples:
+
+  ```bash
+  # To perform conversion with the default settings:
+  ./recipes/run_test.sh -g 0 -e conv_exp1
   
+  # To use Parallel WaveGAN as an alternative for waveform generation:
+  ./recipes/run_test.sh -g 0 -e conv_exp1 -v pwg
+  ```
 
 ## Citation
 

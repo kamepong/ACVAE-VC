@@ -14,11 +14,14 @@ import librosa
 import soundfile as sf
 from sklearn.preprocessing import StandardScaler
 
-import acvae_net as net
+import net
 from extract_features import logmelfilterbank
 
-from pwg.parallel_wavegan.utils import load_model
-from pwg.parallel_wavegan.utils import read_hdf5
+import sys
+sys.path.append(os.path.abspath("hifigan"))
+
+from hifigan.parallel_wavegan.utils import load_model
+from hifigan.parallel_wavegan.utils import read_hdf5
 
 def audio_transform(wav_filepath, scaler, kwargs, device):
 
@@ -48,8 +51,9 @@ def audio_transform(wav_filepath, scaler, kwargs, device):
     return torch.tensor(melspec_norm[None]).to(device, dtype=torch.float)
 
 def make_onehot(clsidx, dim, device):
-    onehot = np.eye(dim, dtype=np.int)[clsidx]
-    return torch.tensor(onehot).to(device, dtype=torch.float)
+    return torch.eye(dim)[clsidx].to(device)
+    #onehot = np.eye(dim, dtype=np.int)[clsidx]
+    #return torch.tensor(onehot).to(device, dtype=torch.float)
 
 def extract_num(s, p, ret=0):
     search = p.search(s)
@@ -69,14 +73,13 @@ def listdir_ext(dirpath,ext):
 def find_newest_model_file(model_dir, tag):
     mfile_list = os.listdir(model_dir)
     checkpoint = max([int(os.path.splitext(os.path.splitext(mfile)[0])[0]) for mfile in mfile_list if mfile.endswith('.{}.pt'.format(tag))])
-    return '{}.{}.pt'.format(checkpoint,tag)
+    return checkpoint
 
-
-def synthesis(melspec, pwg, pwg_config, savepath, device):
+def synthesis(melspec, model_nv, nv_config, savepath, device):
     ## Parallel WaveGAN / MelGAN
     melspec = torch.tensor(melspec, dtype=torch.float).to(device)
     #start = time.time()
-    x = pwg.inference(melspec).view(-1)
+    x = model_nv.inference(melspec).view(-1)
     #elapsed_time = time.time() - start
     #rtf2 = elapsed_time/audio_len
     #print ("elapsed_time (waveform generation): {0}".format(elapsed_time) + "[sec]")
@@ -85,7 +88,7 @@ def synthesis(melspec, pwg, pwg_config, savepath, device):
     # save as PCM 16 bit wav file
     if not os.path.exists(os.path.dirname(savepath)):
         os.makedirs(os.path.dirname(savepath))
-    sf.write(savepath, x.detach().cpu().clone().numpy(), pwg_config["sampling_rate"], "PCM_16")
+    sf.write(savepath, x.detach().cpu().clone().numpy(), nv_config["sampling_rate"], "PCM_16")
 
 def main():
     parser = argparse.ArgumentParser(description='ACVAE-VC')
@@ -99,9 +102,9 @@ def main():
     parser.add_argument('--model_rootdir', '-mdir', type=str, default='./model/arctic/', help='model file directory')
     parser.add_argument('--checkpoint', '-ckpt', type=int, default=0, help='model checkpoint to load (0 indicates the newest model)')
     parser.add_argument('--experiment_name', '-exp', default='experiment1', type=str, help='experiment name')
-    parser.add_argument('--vocoder', '-voc', default='parallel_wavegan.v1', type=str,
-                        help='neural vocoder type name (e.g., parallel_wavegan.v1, melgan.v3.long)')
-    parser.add_argument('--voc_dir', '-vdir', type=str, default='pwg/egs/arctic_4spk_flen64ms_fshift8ms/voc1', 
+    parser.add_argument('--vocoder', '-voc', default='hifigan.v1', type=str,
+                        help='neural vocoder type name (e.g., hifigan.v1, hifigan.v2)')
+    parser.add_argument('--voc_dir', '-vdir', type=str, default='hifigan/egs/arctic_4spk_flen64ms_fshift8ms/voc1', 
                         help='directory of trained neural vocoder')
     args = parser.parse_args()
 
@@ -147,7 +150,8 @@ def main():
 
     tag = 'acvae'
     model_dir = os.path.join(args.model_rootdir,args.experiment_name)
-    mfilename = find_newest_model_file(model_dir, tag) if checkpoint <= 0 else '{}.{}.pt'.format(checkpoint,tag)
+    vc_checkpoint_idx = find_newest_model_file(model_dir, tag) if checkpoint <= 0 else checkpoint
+    mfilename = '{}.{}.pt'.format(vc_checkpoint_idx,tag)
     path = os.path.join(args.model_rootdir,args.experiment_name,mfilename)
     if path is not None:
         acvae_checkpoint = torch.load(path, map_location=device)
@@ -157,24 +161,24 @@ def main():
     #model.to(device).eval()
     model.to(device).train(mode=True)
 
-    # Set up PWG
+    # Set up nv
     vocoder = args.vocoder
     voc_dir = args.voc_dir
     voc_yaml_path = os.path.join(voc_dir,'conf', '{}.yaml'.format(vocoder))
     checkpointlist = listdir_ext(
         os.path.join(voc_dir,'exp','train_nodev_all_{}'.format(vocoder)),'.pkl')
-    pwg_checkpoint = os.path.join(voc_dir,'exp',
+    nv_checkpoint = os.path.join(voc_dir,'exp',
                                   'train_nodev_all_{}'.format(vocoder),
                                   checkpointlist[-1]) # Find and use the newest checkpoint model.
     print('vocoder type: {}'.format(vocoder))
     print('checkpoint  : {}'.format(checkpointlist[-1]))
     
     with open(voc_yaml_path) as f:
-        pwg_config = yaml.load(f, Loader=yaml.Loader)
-    pwg_config.update(vars(args))
-    pwg = load_model(pwg_checkpoint, pwg_config)
-    pwg.remove_weight_norm()
-    pwg = pwg.eval().to(device)
+        nv_config = yaml.load(f, Loader=yaml.Loader)
+    nv_config.update(vars(args))
+    model_nv = load_model(nv_checkpoint, nv_config)
+    model_nv.remove_weight_norm()
+    model_nv = model_nv.eval().to(device)
 
     src_spk_list = sorted(os.listdir(input_dir))
 
@@ -191,13 +195,12 @@ def main():
 
                     num_frames = src_melspec.shape[2]
                     conv_melspec = model(src_melspec, l_s, l_t)
-                    #conv_melspec = model.dec(model.enc(src_melspec, l_s)[0], l_t, num_frames)[0]
 
                     conv_melspec = conv_melspec[0,:,:].detach().cpu().clone().numpy()
                     conv_melspec = conv_melspec.T # n_frames x n_mels
 
-                    out_wavpath = os.path.join(args.out,args.experiment_name,'{}2{}'.format(src_spk,trg_spk), src_wav_filename)
-                    synthesis(conv_melspec, pwg, pwg_config, out_wavpath, device)
+                    out_wavpath = os.path.join(args.out,args.experiment_name,'{}'.format(vc_checkpoint_idx),vocoder,'{}2{}'.format(src_spk,trg_spk), src_wav_filename)
+                    synthesis(conv_melspec, model_nv, nv_config, out_wavpath, device)
 
 
 if __name__ == '__main__':

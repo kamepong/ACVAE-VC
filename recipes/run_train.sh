@@ -1,9 +1,9 @@
-#!/bin/sh
+#!/bin/bash
 
 # Copyright 2021 Hirokazu Kameoka
 # 
 # Usage:
-# ./run_train_arctic_5spk.sh [-g gpu] [-a arch_type] [-s stage] [-e exp_name]
+# ./run_train.sh [-g gpu] [-a arch_type] [-s stage] [-e exp_name]
 # Options:
 #     -g: GPU device# 
 #     -a: Architecture type ("conv" or "rnn")
@@ -11,8 +11,8 @@
 #     -e: Experiment name (e.g., "exp1")
 
 # Default values
-db_dir="/misc/raid58/kameoka.hirokazu/db/arctic_5spk/wav/training"
-dataset_name="arctic_5spk"
+db_dir="/path/to/dataset/training"
+dataset_name="mydataset"
 gpu=0
 arch_type="conv"
 start_stage=0
@@ -26,13 +26,6 @@ while getopts "g:a:s:e:" opt; do
               e ) exp_name=$OPTARG;;
        esac
 done
-
-# Model configuration for each architecture type
-if [ ${arch_type} == "conv" ]; then
-       cond="--epochs 2000 --snapshot 200"
-elif [ ${arch_type} == "rnn" ]; then
-       cond="--epochs 2000 --snapshot 200"
-fi
 
 feat_dir="./dump/${dataset_name}/feat/train"
 dconf_path="./dump/${dataset_name}/data_config.json"
