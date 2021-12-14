@@ -2,7 +2,7 @@
 
 This repository provides an official PyTorch implementation for [ACVAE-VC](http://www.kecl.ntt.co.jp/people/kameoka.hirokazu/Demos/acvae-vc3/index.html).
 
-ACVAE-VC is a non-parallel many-to-many voice conversion (VC) method using an auxiliary classifier variational autoencoder (ACVAE). The current version performs VC by first modifying the mel-spectrogram of input speech, and then generating a waveform using a speaker-independent neural vocoder (HifiGAN or Parallel WaveGAN) from the modified spectrogram.
+ACVAE-VC is a non-parallel many-to-many voice conversion (VC) method using an auxiliary classifier variational autoencoder (ACVAE). The current version performs VC by first modifying the mel-spectrogram of input speech, and then generating a waveform using a speaker-independent neural vocoder (HiFi-GAN or Parallel WaveGAN) from the modified spectrogram.
 
 Audio samples are available [here](http://www.kecl.ntt.co.jp/people/kameoka.hirokazu/Demos/acvae-vc3/index.html).
 
@@ -48,8 +48,8 @@ Audio samples are available [here](http://www.kecl.ntt.co.jp/people/kameoka.hiro
 
 #### Waveform generator
 
-1. Place a copy of the directory `parallel_wavegan` from https://github.com/kan-bayashi/ParallelWaveGAN in `hifigan/` (or `pwg/`).
-2. HifiGAN models trained on several databases can be found [here](https://drive.google.com/drive/folders/1RvagKsKaCih0qhRP6XkSF07r3uNFhB5T?usp=sharing). Once these are downloaded, place them in `hifigan/egs/`. Please contact me if you have any problems downloading.
+1. Place a copy of the directory `parallel_wavegan` from https://github.com/kan-bayashi/ParallelWaveGAN in `pwg/`.
+2. HiFi-GAN models trained on several databases can be found [here](https://drive.google.com/drive/folders/1RvagKsKaCih0qhRP6XkSF07r3uNFhB5T?usp=sharing). Once these are downloaded, place them in `pwg/egs/`. Please contact me if you have any problems downloading.
 3. Optionally, Parallel WaveGAN can be used instead for waveform generation. The trained models are available [here](https://drive.google.com/drive/folders/1zRYZ9dx16dONn1SEuO4wXjjgJHaYSKwb?usp=sharing). Once these are downloaded, place them in `pwg/egs/`. 
 
 ## Main
@@ -73,7 +73,7 @@ To run all stages for model training, execute:
   -s: Stage to start (0 or 1)
   #    Stages 0 and 1 correspond to feature extraction and model training, respectively.
   -e: Experiment name (default: "conv_exp1")
-  #    This name will be used at test time to specify the trained model.
+  #    This name will be used at test time to specify which trained model to load.
   ```
 
 - Examples:
@@ -104,7 +104,7 @@ tensorboard [--logdir log_path]
 To perform conversion, execute:
 
 ```bash
-./recipes/run_test.sh [-g gpu] [-e exp_name] [-c checkpoint] [-v vocoder]
+./recipes/run_test.sh [-g gpu] [-e exp_name] [-c checkpoint] [-v vocoder_type]
 ```
 
 - Options:
@@ -115,8 +115,8 @@ To perform conversion, execute:
   -e: Experiment name (e.g., "conv_exp1")
   -c: Model checkpoint to load (default: 0)
   #    0 indicates the newest model
-  -v: Vocoder type ("hifigan" or "pwg")
-  #    hifigan: HifiGAN (default)
+  -v: Vocoder type ("hfg" or "pwg")
+  #    hfg: HiFi-GAN (default)
   #    pwg: Parallel WaveGAN
   ```
 

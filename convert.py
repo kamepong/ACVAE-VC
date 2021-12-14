@@ -18,10 +18,9 @@ import net
 from extract_features import logmelfilterbank
 
 import sys
-sys.path.append(os.path.abspath("hifigan"))
-
-from hifigan.parallel_wavegan.utils import load_model
-from hifigan.parallel_wavegan.utils import read_hdf5
+sys.path.append(os.path.abspath("pwg"))
+from pwg.parallel_wavegan.utils import load_model
+from pwg.parallel_wavegan.utils import read_hdf5
 
 def audio_transform(wav_filepath, scaler, kwargs, device):
 
@@ -103,8 +102,8 @@ def main():
     parser.add_argument('--checkpoint', '-ckpt', type=int, default=0, help='model checkpoint to load (0 indicates the newest model)')
     parser.add_argument('--experiment_name', '-exp', default='experiment1', type=str, help='experiment name')
     parser.add_argument('--vocoder', '-voc', default='hifigan.v1', type=str,
-                        help='neural vocoder type name (e.g., hifigan.v1, hifigan.v2)')
-    parser.add_argument('--voc_dir', '-vdir', type=str, default='hifigan/egs/arctic_4spk_flen64ms_fshift8ms/voc1', 
+                        help='neural vocoder type name (e.g., hifigan.v1, hifigan.v2, parallel_wavegan.v1)')
+    parser.add_argument('--voc_dir', '-vdir', type=str, default='pwg/egs/arctic_4spk_flen64ms_fshift8ms/voc1', 
                         help='directory of trained neural vocoder')
     args = parser.parse_args()
 
@@ -156,7 +155,7 @@ def main():
     if path is not None:
         acvae_checkpoint = torch.load(path, map_location=device)
         model.load_state_dict(acvae_checkpoint['model_state_dict'])
-        print('{}: {}'.format(tag, mfilename))
+        print('{}: {}'.format(tag, os.path.abspath(path)))
 
     #model.to(device).eval()
     model.to(device).train(mode=True)
@@ -170,8 +169,7 @@ def main():
     nv_checkpoint = os.path.join(voc_dir,'exp',
                                   'train_nodev_all_{}'.format(vocoder),
                                   checkpointlist[-1]) # Find and use the newest checkpoint model.
-    print('vocoder type: {}'.format(vocoder))
-    print('checkpoint  : {}'.format(checkpointlist[-1]))
+    print('vocoder: {}'.format(os.path.abspath(nv_checkpoint)))
     
     with open(voc_yaml_path) as f:
         nv_config = yaml.load(f, Loader=yaml.Loader)
